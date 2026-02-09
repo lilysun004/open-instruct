@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 
 import torch
-import torch.distributed.nn.functional as dist_functional
 import torch.nn.functional as F
-from torch.distributed import tensor as distributed_tensor
+from torch.distributed.tensor import DTensor, Replicate, Shard
 from transformers import DefaultDataCollator
 
 from open_instruct import logger_utils
@@ -193,7 +192,7 @@ def calculate_per_token_logps(logits_output: torch.Tensor, labels: torch.Tensor)
     shifted_labels = torch.full_like(labels, -100)
     shifted_labels[:, :-1] = labels[:, 1:]
 
-    if isinstance(logits_output, distributed_tensor.DTensor):
+    if isinstance(logits_output, DTensor):
         local_logits = logits_output.to_local().to(torch.float32)
         tp_rank = logits_output.device_mesh.get_local_rank()
         chunk = local_logits.shape[1]
@@ -201,9 +200,8 @@ def calculate_per_token_logps(logits_output: torch.Tensor, labels: torch.Tensor)
         safe = local_shifted.clamp(min=0)
         mask = (local_shifted != -100).float()
         local_logps = torch.gather(local_logits.log_softmax(-1), 2, safe.unsqueeze(2)).squeeze(2) * mask
-        tp_group = logits_output.device_mesh.get_group(mesh_dim=0)
-        gathered = dist_functional.all_gather(local_logps, group=tp_group)
-        return torch.cat(gathered, dim=1)
+        logps_dtensor = DTensor.from_local(local_logps, logits_output.device_mesh, (Shard(1),))
+        return logps_dtensor.redistribute(placements=(Replicate(),)).to_local()
 
     logits = logits_output.to(torch.float32)
     safe = shifted_labels.clamp(min=0)
