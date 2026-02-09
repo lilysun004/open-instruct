@@ -267,7 +267,8 @@ def main(args: dpo_utils.ExperimentConfig, tc: dataset_transformation.TokenizerC
     train.prepare_training_environment(seed=args.seed)
 
     tp_degree = args.tensor_parallel_degree
-    dp_rank = distributed_utils.get_rank() // tp_degree if distributed_utils.is_distributed() else 0
+    global_rank = distributed_utils.get_rank() if distributed_utils.is_distributed() else 0
+    dp_rank = global_rank // tp_degree
     is_main_process = dp_rank == 0
 
     dataset = _load_dataset_distributed(args, tc, transform_fn_args, is_main_process)
@@ -308,6 +309,7 @@ def main(args: dpo_utils.ExperimentConfig, tc: dataset_transformation.TokenizerC
         work_dir=args.output_dir,
         collator=collator,
         device=device,
+        fs_local_rank=global_rank,
     )
     # 4x batch size: forward-only (no backward), so no activation storage needed.
     # With packing, use smaller batch size (half) to avoid truncation when packing long sequences.
@@ -325,6 +327,7 @@ def main(args: dpo_utils.ExperimentConfig, tc: dataset_transformation.TokenizerC
         collator=collator,
         device=device,
         drop_last=False,
+        fs_local_rank=global_rank,
     )
 
     forward_fn = dpo_utils.concatenated_forward_olmo if args.concatenated_forward else dpo_utils.separate_forward_olmo
