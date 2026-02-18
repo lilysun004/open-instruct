@@ -232,6 +232,8 @@ class HubConfig:
 
     push_to_hub: bool = True
     """Whether to upload the saved model to huggingface"""
+    push_checkpoints_to_hub: bool = False
+    """Whether to also push intermediate checkpoints to huggingface (as separate branches)"""
     hf_entity: str | None = None
     """The user or org name of the model repository from the Hugging Face Hub"""
     hf_repo_id: str | None = None

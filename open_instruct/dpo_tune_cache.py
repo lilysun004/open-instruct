@@ -700,6 +700,20 @@ def main(args: dpo_utils.ExperimentConfig, tc: TokenizerConfig):
                         clean_last_n_checkpoints(args.output_dir, args.keep_last_n_checkpoints)
                     accelerator.wait_for_everyone()
 
+                    # Push intermediate checkpoint to Hub as a clean HF model on a separate branch
+                    if getattr(args, "push_checkpoints_to_hub", False) and args.push_to_hub:
+                        ckpt_dir = os.path.join(args.output_dir, f"hf_step_{completed_steps}")
+                        model_utils.save_with_accelerate(
+                            accelerator, model, tokenizer, ckpt_dir, args.use_lora,
+                            chat_template_name=tc.chat_template_name,
+                        )
+                        if accelerator.is_main_process:
+                            branch = f"step-{completed_steps}"
+                            logger.info(f"Pushing intermediate checkpoint to hub branch: {branch}")
+                            model_utils.push_folder_to_hub(ckpt_dir, args.hf_repo_id, branch)
+                            shutil.rmtree(ckpt_dir, ignore_errors=True)
+                        accelerator.wait_for_everyone()
+
                 if completed_steps >= args.max_train_steps:
                     break
 
